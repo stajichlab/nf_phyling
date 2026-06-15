@@ -18,7 +18,8 @@ process PHYLING_ALIGN {
         -m ${markerset} \\
         -o ${markerset}-align \\
         -t ${task.cpus} \\
-        ${seqtype_arg} \\
-        --verbose
+        --verbose \\
+        ${seqtype_arg}
+
     """
 }
