@@ -2,7 +2,7 @@ process PHYKIT_CONCAT {
     tag "${markerset}"
     label "process_short"
 
-    publishDir "${params.outdir}/${params.seq_type}/buildtree/${markerset}", mode: params.publish_mode
+    publishDir "${params.outdir}/${params.seq_type}/buildtree", mode: params.publish_mode
 
     input:
     tuple val(markerset), val(seq_type), path(filter_dir), val(stem)
