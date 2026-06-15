@@ -13,9 +13,16 @@ include { RAXMLNG_ALL       } from '../modules/local/raxmlng/all/main'
 workflow CDS_TREE {
     def seq_type	 = 'cds'
     def data_type        = 'DNA'
-    def phykit_stem_base = "${seq_type}-${params.prefix}"
-
     ch_input_dir  = file(params.input, checkIfExists: true)
+    def n_taxa = files("${params.input}/*.fa").size() + 
+                files("${params.input}/*.fasta").size() +
+                files("${params.input}/*.fna").size() +
+                files("${params.input}/*.ffn").size() +
+                files("${params.input}/*.fa.gz").size() + 
+                files("${params.input}/*.fasta.gz").size() +
+                files("${params.input}/*.fna.gz").size() +
+                files("${params.input}/*.ffn.gz").size()
+    def phykit_stem_base = "${seq_type}-${params.prefix}-taxa_${n_taxa}"
     ch_markersets = Channel.of(params.markerset.tokenize(',')).flatten()
 
     // ── Step 1: align each markerset ──────────────────────────────
