@@ -1,5 +1,6 @@
 nextflow.enable.dsl = 2
 
+include { PHYLING_DOWNLOAD  } from '../modules/local/phyling/download/main'
 include { PHYLING_ALIGN     } from '../modules/local/phyling/align/main'
 include { PHYLING_FILTER    } from '../modules/local/phyling/filter/main'
 include { PHYLING_TREE      } from '../modules/local/phyling/tree/main'
@@ -27,9 +28,12 @@ workflow PROTEIN_TREE {
 
     ch_markersets = Channel.of(params.markerset.tokenize(',')).flatten()
 
+    // ── Step 0: download each markerset into ~/.phyling/HMM ────────
+    PHYLING_DOWNLOAD(ch_markersets)
+
     // ── Step 1: align each markerset ──────────────────────────────
     PHYLING_ALIGN(
-        ch_markersets.map { ms -> [ ms, seq_type, ch_input_dir ] }
+        PHYLING_DOWNLOAD.out.hmm_dir.map { ms, hmm -> [ ms, seq_type, ch_input_dir, hmm ] }
     )
 
     // ── Step 2: filter alignments ─────────────────────────────────

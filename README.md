@@ -21,6 +21,7 @@ in parallel, producing four independently-supported trees per markerset.
 ```
 INPUT: one sequence file per taxon
          ↓ (per markerset, in parallel)
+  phyling download    Fetch BUSCO markerset into ~/.phyling/HMM (skipped if already present)
   phyling align       BUSCO marker search + MSA
   phyling filter      Remove loci below occupancy threshold (default 80% of taxa)
   phyling tree        Per-gene FastTree (exploratory gene trees)
@@ -112,7 +113,7 @@ Queue names are cluster-specific. Create a minimal site config and pass it with 
 process {
     withName: 'PHYLING_ALIGN'    { queue = 'bigmem' }
     withName: 'MODELTEST_NG|IQTREE_MF|IQTREE_BOOTSTRAP|RAXMLNG_ALL' { queue = 'compute' }
-    withName: 'PHYLING_FILTER|PHYLING_TREE|PHYKIT_CONCAT|RAXMLNG_PARSE' { queue = 'short' }
+    withName: 'PHYLING_DOWNLOAD|PHYLING_FILTER|PHYLING_TREE|PHYKIT_CONCAT|RAXMLNG_PARSE' { queue = 'short' }
 }
 ```
 
@@ -152,7 +153,10 @@ nextflow run stajichlab/phyling-phylogenomics \
 | `basidiomycota_odb10` | Basidiomycota |
 | `ascomycota_odb10` | Ascomycota |
 
-Multiple markersets run as independent parallel branches.
+Multiple markersets run as independent parallel branches. Each markerset is
+fetched automatically by the `PHYLING_DOWNLOAD` step (`phyling download
+{markerset}` into `~/.phyling/HMM`) before alignment — no manual download is
+required. Run `phyling download list` to see all available lineage names.
 
 ---
 
@@ -245,7 +249,7 @@ phyling-phylogenomics/
 │   ├── cds_tree.nf
 │   └── protein_tree.nf
 └── modules/local/
-    ├── phyling/{align,filter,tree}/
+    ├── phyling/{download,align,filter,tree}/
     ├── phykit/concat/
     ├── modeltestng/
     ├── iqtree/{mf,bootstrap}/
