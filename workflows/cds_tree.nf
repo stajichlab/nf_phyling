@@ -26,7 +26,7 @@ workflow CDS_TREE {
     def phykit_stem_base = "${seq_type}-${params.prefix}-taxa_${n_taxa}"
     ch_markersets = Channel.of(params.markerset.tokenize(',')).flatten()
 
-    // ── Step 0: download each markerset into ~/.phyling ────────
+    // ── Step 0: download each markerset into the $PHYLING_DB cache ──
     PHYLING_DOWNLOAD(ch_markersets)
 
     // ── Step 1: align each markerset ──────────────────────────────

@@ -28,7 +28,7 @@ workflow PROTEIN_TREE {
 
     ch_markersets = Channel.of(params.markerset.tokenize(',')).flatten()
 
-    // ── Step 0: download each markerset into ~/.phyling ────────
+    // ── Step 0: download each markerset into the $PHYLING_DB cache ──
     PHYLING_DOWNLOAD(ch_markersets)
 
     // ── Step 1: align each markerset ──────────────────────────────

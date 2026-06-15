@@ -11,7 +11,11 @@ process PHYLING_FILTER {
     tuple val(markerset), val(seq_type), path("${markerset}-filter"), emit: filter_dir
 
     script:
+    def db = params.phyling_db ?: "${workflow.workDir}/phyling"
     """
+    export PHYLING_DB="${db}"
+    mkdir -p "\$PHYLING_DB"
+
     phyling filter \\
         -I ${align_dir} \\
         -t ${task.cpus} \\

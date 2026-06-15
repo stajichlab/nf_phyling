@@ -12,7 +12,12 @@ process PHYLING_ALIGN {
 
     script:
     def seqtype_arg = seq_type == 'cds' ? '--seqtype dna' : ''
+    def db = params.phyling_db ?: "${workflow.workDir}/phyling"
     """
+    # resolve the markerset from the shared local cache populated by PHYLING_DOWNLOAD
+    export PHYLING_DB="${db}"
+    mkdir -p "\$PHYLING_DB"
+
     phyling align \\
         -I ${input_dir} \\
         -m ${markerset} \\
