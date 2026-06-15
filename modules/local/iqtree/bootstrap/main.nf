@@ -35,6 +35,6 @@ process IQTREE_BOOTSTRAP {
         --wbtl \\
         --prefix ${prefix} \\
         -T AUTO \\
-        --ntmax ${task.cpus}
+        --threads-max ${task.cpus}
     """
 }

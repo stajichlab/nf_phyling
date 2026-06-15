@@ -37,6 +37,6 @@ process IQTREE_MF {
         -rcluster ${params.rcluster} \\
         --prefix ${prefix} \\
         -T AUTO \\
-        --ntmax ${task.cpus}
+        --threads-max ${task.cpus}
     """
 }
