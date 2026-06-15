@@ -103,6 +103,28 @@ Profiles can be combined with commas: `-profile slurm,ucr_hpcc`
 | `pixi` | local | pixi env | local workstation with pixi |
 | `pixi_slurm` | SLURM | pixi env | HPC without modules; combine with a site profile |
 | `local` | local | tools in PATH | testing |
+| `vm` | local | — | small VM / laptop; caps cpus/memory/time to the machine (combine with a software profile, e.g. `singularity,vm`) |
+
+### Running on a small VM or laptop
+
+Several processes request many cores by default (e.g. `PHYLING_ALIGN` asks for
+24). On a machine with fewer CPUs the local executor aborts with
+`Process requirement exceeds available CPUs -- req: 24; avail: 4`. The `vm`
+profile clamps every process's requested cpus/memory/time down to the machine's
+capacity, so those labels fit without editing the pipeline:
+
+```bash
+nextflow run stajichlab/nf_phyling \
+  -profile singularity,vm \
+  --seq_type protein --input pep/ --prefix my_project \
+  --markerset fungi_odb12
+```
+
+Defaults are 4 cpus / 14 GB / 72 h. Override for your host:
+
+```bash
+  -profile singularity,vm --max_cpus 8 --max_memory 30.GB
+```
 
 ### Using on a different cluster
 
@@ -144,6 +166,9 @@ nextflow run stajichlab/phyling-phylogenomics \
 | `--pars_trees` | `10` | RAxML-NG parsimony starting trees |
 | `--bs_trees_cds` | `500` | RAxML-NG bootstrap replicates for CDS mode |
 | `--bs_trees_pep` | `100` | RAxML-NG bootstrap replicates for protein mode |
+| `--max_cpus` | `4` | Resource ceiling used only with `-profile vm`: caps every process's requested CPUs |
+| `--max_memory` | `14.GB` | Resource ceiling used only with `-profile vm`: caps every process's requested memory |
+| `--max_time` | `72.h` | Resource ceiling used only with `-profile vm`: caps every process's requested wall time |
 
 ### Common BUSCO markersets
 
