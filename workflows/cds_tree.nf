@@ -31,7 +31,7 @@ workflow CDS_TREE {
 
     // ── Step 1: align each markerset ──────────────────────────────
     PHYLING_ALIGN(
-        PHYLING_DOWNLOAD.out.hmm_dir.map { ms, hmm -> [ ms, seq_type, ch_input_dir, hmm ] }
+        PHYLING_DOWNLOAD.out.markerset.map { ms -> [ ms, seq_type, ch_input_dir ] }
     )
 
     // ── Step 2: filter alignments ─────────────────────────────────

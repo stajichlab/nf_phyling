@@ -6,15 +6,17 @@ process PHYLING_DOWNLOAD {
     val markerset
 
     output:
-    tuple val(markerset), path("${markerset}_hmm"), emit: hmm_dir
+    val markerset, emit: markerset
 
     script:
     """
     # phyling stores the markerset under the config folder \$HOME/.phyling
-    phyling download ${markerset} --verbose
-
-    # stage the downloaded markerset into the task work dir so it is an
-    # explicit, cacheable pipeline input for the align step
-    cp -rL "\${HOME}/.phyling/${markerset}" "${markerset}_hmm"
+    # align resolves it from there via `-m ${markerset}`
+    # only fetch if it isn't already present locally
+    if [ ! -d "\${HOME}/.phyling/${markerset}" ]; then
+        phyling download ${markerset} --verbose
+    else
+        echo "markerset ${markerset} already present in \${HOME}/.phyling, skipping download"
+    fi
     """
 }
