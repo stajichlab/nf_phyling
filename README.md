@@ -136,6 +136,7 @@ nextflow run stajichlab/phyling-phylogenomics \
 | `--markerset` | `fungi_odb12,mucoromycota_odb12` | Comma-separated BUSCO lineage names |
 | `--outdir` | `results` | Directory for published outputs |
 | `--publish_mode` | `copy` | publishDir mode: `copy`, `link`, or `symlink` |
+| `--phyling_db` | `<workDir>/phyling` | Marker DB cache (`$PHYLING_DB`); defaults to a run-local cache under the work folder. Set to a shared path to reuse across runs |
 | `--top_n_to_keep` | `80` | Number of top markers to retain (`TOP_N_TOVERR` in phyling filter `-n`) |
 | `--rcluster` | `10` | IQ-TREE partition merging aggressiveness |
 | `--bs_count` | `1000` | IQ-TREE UFBoot replicates (`-B`) |
@@ -155,8 +156,12 @@ nextflow run stajichlab/phyling-phylogenomics \
 
 Multiple markersets run as independent parallel branches. Each markerset is
 fetched automatically by the `PHYLING_DOWNLOAD` step (`phyling download
-{markerset}` into `~/.phyling/HMM`) before alignment — no manual download is
-required. Run `phyling download list` to see all available lineage names.
+{markerset}`) before alignment — no manual download is required. Markersets are
+cached in `$PHYLING_DB` rather than the default `~/.phyling`; this defaults to a
+run-local `<workDir>/phyling` directory, so a clean work folder (or `nextflow
+clean`) triggers a re-download. Point `--phyling_db` at a persistent path to
+share one cache across runs. Run `phyling download list` to see all available
+lineage names.
 
 ---
 
