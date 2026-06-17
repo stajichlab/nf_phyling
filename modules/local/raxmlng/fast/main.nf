@@ -36,6 +36,7 @@ process RAXMLNG_FAST {
         --fast \\
         --msa ${rba} \\
         --threads auto{${task.cpus}} \\
-        --prefix ${prefix}
+        --prefix ${prefix} \\
+        --extra seq-dup-keep
     """
 }

@@ -37,6 +37,7 @@ process RAXMLNG_BOOTSTRAP {
         --msa ${rba} \\
         --bs-trees ${bs_trees} \\
         --threads auto{${task.cpus}} \\
-        --prefix ${prefix}
+        --prefix ${prefix} \\
+        --extra seq-dup-keep
     """
 }

@@ -23,7 +23,8 @@ process RAXMLNG_PARSE {
         --parse \\
         --msa ${concat_fa} \\
         --model ${partition} \\
-        --prefix ${stem}
+        --prefix ${stem} \\
+	--extra seq-dup-keep
 
     # "Recommended number of threads / MPI processes: N for this alignment"
     REC_THREADS=\$(grep 'Recommended number of threads' ${stem}.raxml.log | grep -oE '[0-9]+' | head -n1)

@@ -34,6 +34,7 @@ process RAXMLNG_ALL {
         --msa ${rba} \\
         --threads auto{${task.cpus}} \\
         --tree pars{${params.pars_trees}} \\
-        --bs-trees ${bs_trees}
+        --bs-trees ${bs_trees} \\
+        --extra seq-dup-keep
     """
 }

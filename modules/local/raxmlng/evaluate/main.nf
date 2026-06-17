@@ -36,6 +36,7 @@ process RAXMLNG_EVALUATE {
         --msa ${rba} \\
         --tree ${tree} \\
         --threads auto{${task.cpus}} \\
-        --prefix ${prefix}
+        --prefix ${prefix} \\
+        --extra seq-dup-keep
     """
 }

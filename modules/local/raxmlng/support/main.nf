@@ -26,6 +26,7 @@ process RAXMLNG_SUPPORT {
         --tree ${best_tree} \\
         --bs-trees ${bs_trees} \\
         --threads auto{${task.cpus}} \\
-        --prefix ${prefix}
+        --prefix ${prefix} \\
+        --extra seq-dup-keep
     """
 }
