@@ -1,7 +1,8 @@
 // Full ML search + bootstrapping. The cpu request is driven dynamically by RAxML-NG's own
 // recommended thread count (rec_threads), extracted upstream by RAXMLNG_PARSE, clamped to
 // [params.raxml_min_cpus, params.raxml_max_cpus]. This makes the SLURM allocation match the
-// work instead of requesting a fixed core count.
+// work instead of requesting a fixed core count. --threads auto{N} then lets RAxML-NG pick the
+// optimal count up to that allocation, so it won't oversubscribe (and abort) on small alignments.
 process RAXMLNG_ALL {
     tag "${markerset}:${score}"
     label 'process_tree'
@@ -31,7 +32,7 @@ process RAXMLNG_ALL {
     raxml-ng \\
         --all \\
         --msa ${rba} \\
-        --threads ${task.cpus} \\
+        --threads auto{${task.cpus}} \\
         --tree pars{${params.pars_trees}} \\
         --bs-trees ${bs_trees}
     """
