@@ -59,20 +59,14 @@ workflow CDS_TREE {
     }
     ch_scored = ch_aic.mix(ch_bic)
 
-    // RAxML-NG: parse binary + thread advice (cheap, cpus=1). Its recommended thread count
-    // also drives the IQ-TREE cpu requests below, so both tree builders share one estimate.
+    // RAxML-NG: parse binary + thread advice (cheap, cpus=1) for the RAxML ML search only.
     RAXMLNG_PARSE(ch_scored)
 
-    // (markerset, seq_type, score) -> rec_threads
-    ch_rec = RAXMLNG_PARSE.out.parsed.map { ms, st, score, rba, rec -> [ [ms, st, score], rec ] }
-
     // IQ-TREE: model-finder + merge tree, then UFBoot + SH-aLRT.
-    // Join the thread recommendation onto each scored alignment before running.
-    ch_iqtree_in = ch_scored
-        .map { ms, st, fa, part, score -> [ [ms, st, score], fa, part ] }
-        .join(ch_rec)
-        .map { key, fa, part, rec -> [ key[0], key[1], fa, part, key[2], rec ] }
-    IQTREE_MF(ch_iqtree_in)
+    // Runs straight off the scored alignments — deliberately independent of every RAxML step,
+    // so a raxml-ng failure (parse or ML search) cannot block IQ-TREE. IQ-TREE sizes its own
+    // allocation from iqtree_max_cpus and self-scales within it via -T AUTO.
+    IQTREE_MF(ch_scored)
     IQTREE_BOOTSTRAP(IQTREE_MF.out.best_scheme)
 
     // RAxML-NG ML search + bootstraps
