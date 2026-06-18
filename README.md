@@ -3,16 +3,19 @@
 [![Nextflow](https://img.shields.io/badge/nextflow-%E2%89%A524.0-brightgreen)](https://nextflow.io/)
 
 DSL2 Nextflow pipeline for multi-locus ML phylogenomics using BUSCO single-copy
-orthologs. Wraps PHYling, PhyKIT, ModelTest-NG, IQ-TREE 3, and RAxML-NG into
-two named workflows:
+orthologs. Wraps PHYling, PhyKIT, ModelTest-NG, IQ-TREE 3, RAxML-NG, and
+FastTree into two named workflows:
 
-| Workflow | `--mode` | Input | Data type | RAxML-NG bootstraps |
+| Workflow | `--seq_type` | Input | Data type | RAxML-NG bootstraps |
 |---|---|---|---|---|
-| `CDS_TREE` | `cds_tree` | `.fa` per taxon | DNA / CDS | 500 |
-| `PROTEIN_TREE` | `protein_tree` | `.fa.gz` per taxon | Amino acid | 100 |
+| `CDS_TREE` | `cds` | `.fa` per taxon | DNA / CDS | 500 |
+| `PROTEIN_TREE` | `protein` | `.fa.gz` per taxon | Amino acid | 100 |
 
 Both workflows run AIC and BIC partition schemes through IQ-TREE and RAxML-NG
-in parallel, producing four independently-supported trees per markerset.
+in parallel, producing four independently-supported trees per markerset, plus
+two FastTreeMP trees (a fast `-nosupport` tree and a `-boot` SH-like support
+tree) on the concatenated alignment. IQ-TREE, RAxML-NG, and FastTree are
+deliberately independent — one failing never blocks the others.
 
 ---
 
@@ -35,6 +38,8 @@ INPUT: one sequence file per taxon
   iqtree3 UFBoot      Bootstrap (-B 1000 --alrt 1000 --bnni --wbtl)
   raxml-ng --parse    Produce binary alignment; extract thread recommendation
   raxml-ng --all      ML search + bootstraps
+  FastTreeMP          Fast approximate-ML tree on the concatenation (single model:
+                      -lg / -gtr); one -nosupport tree + one -boot support tree
 ```
 
 ---
@@ -45,12 +50,21 @@ INPUT: one sequence file per taxon
 
 ```bash
 nextflow run stajichlab/phyling-phylogenomics \
-  -profile slurm,ucr_hpcc \
-  --mode protein_tree \
+  -profile singularity_slurm,ucr_hpcc \
+  --seq_type protein \
   --input /path/to/pep \
   --prefix my_project \
   --markerset fungi_odb12,mucoromycota_odb12 \
   --outdir results/pep
+```
+
+On UCR HPCC the easiest path is one of the provided sbatch launchers — see
+[SLURM batch launchers](#slurm-batch-launchers) below:
+
+```bash
+mkdir -p logs
+sbatch run_phyling_singularity.sh    # Singularity/BioContainers
+sbatch run_phyling_pixi.sh           # pixi-managed conda env
 ```
 
 ### Clone and run locally
@@ -61,7 +75,7 @@ cd phyling-phylogenomics
 
 nextflow run main.nf \
   -profile local \
-  --mode cds_tree \
+  --seq_type cds \
   --input /path/to/cds \
   --prefix my_project \
   --markerset fungi_odb12 \
@@ -72,7 +86,23 @@ nextflow run main.nf \
 
 ## Requirements
 
-### Option A — pixi (recommended)
+In every case the only tool you need on the machine that launches the run is
+**Nextflow (≥ 24)**; the per-step tools are supplied by the chosen software
+profile (pixi, Singularity, or environment modules).
+
+### Option A — Singularity / Apptainer (most portable)
+
+Nothing to install beyond Singularity (or Apptainer) and Nextflow — each step
+pulls its BioContainers image automatically. Set a shared cache so images aren't
+re-pulled per user:
+
+```bash
+export NXF_SINGULARITY_CACHEDIR=/bigdata/stajichlab/shared/singularity_cache
+```
+
+Use `-profile singularity` (local) or `-profile singularity_slurm` (SLURM).
+
+### Option B — pixi
 
 ```bash
 # Install pixi if not already present
@@ -83,26 +113,41 @@ pixi install
 ```
 
 Tools installed: `nextflow`, `modeltest-ng`, `iqtree ≥2.3` (provides `iqtree3`),
-`raxml-ng` from bioconda; `phykit` and `phyling` from PyPI.
+`raxml-ng`, `fasttree` (provides `FastTreeMP`) from bioconda; `phykit` and
+`phyling` from PyPI. Use `-profile pixi` (local) or `-profile pixi_slurm` (SLURM).
 
-### Option B — environment modules (HPC)
+### Option C — environment modules (HPC)
 
-Module names expected by `-profile slurm`:
-`phyling`, `phykit`, `modeltest-ng`, `iqtree`, `raxml-ng`
+Module names expected by `-profile modules` (site-specific; UCR HPCC names):
+`phyling`, `phykit`, `modeltest-ng`, `iqtree`, `raxml-ng`, `fasttree`
 
 ---
 
 ## Execution profiles
 
-Profiles can be combined with commas: `-profile slurm,ucr_hpcc`
+Profiles compose along two axes — an **executor** (where jobs run) and a
+**software** profile (how tools are provided) — combined with commas, plus an
+optional **site** profile for queue names. The `*_slurm` profiles are
+convenience combinations that bundle the SLURM executor with a software layer.
 
-| Profile | Executor | Environment | Use when |
+```
+  -profile singularity_slurm,ucr_hpcc   (Singularity + SLURM, UCR queues)
+  -profile pixi_slurm,ucr_hpcc          (pixi env + SLURM, UCR queues)
+  -profile slurm,modules,ucr_hpcc       (env modules + SLURM, UCR queues)
+  -profile singularity                  (Singularity, local executor)
+```
+
+| Profile | Executor | Software | Use when |
 |---|---|---|---|
-| `slurm` | SLURM | `module load` per tool | HPC with environment modules |
-| `ucr_hpcc` | — | — | UCR HPCC queue names (combine with `slurm` or `pixi_slurm`) |
-| `pixi` | local | pixi env | local workstation with pixi |
-| `pixi_slurm` | SLURM | pixi env | HPC without modules; combine with a site profile |
-| `local` | local | tools in PATH | testing |
+| `slurm` | SLURM | — (pair with a software profile) | HPC; the executor only |
+| `local` | local | — (tools in PATH) | quick testing |
+| `singularity` | local | BioContainers images | local workstation with Singularity |
+| `singularity_slurm` | SLURM | BioContainers images | HPC, portable (recommended) |
+| `pixi` | local | pixi conda env | local workstation with pixi |
+| `pixi_slurm` | SLURM | pixi conda env | HPC without site modules |
+| `modules` | — | `module load` per tool | pair with `slurm`; site-specific module names |
+| `modules_slurm` | SLURM | `module load` per tool | env-modules HPC shortcut |
+| `ucr_hpcc` | — | — | UCR HPCC queue names; combine with any of the above |
 | `vm` | local | — | small VM / laptop; caps cpus/memory/time to the machine (combine with a software profile, e.g. `singularity,vm`) |
 
 ### Running on a small VM or laptop
@@ -141,9 +186,57 @@ process {
 
 ```bash
 nextflow run stajichlab/phyling-phylogenomics \
-  -profile slurm -c my_cluster.config \
-  --mode protein_tree --input pep/ --prefix my_project \
+  -profile singularity_slurm -c my_cluster.config \
+  --seq_type protein --input pep/ --prefix my_project \
   --markerset fungi_odb12
+```
+
+---
+
+## SLURM batch launchers
+
+Two ready-to-edit sbatch scripts live in the repository root. They submit a
+lightweight Nextflow **driver** job (2 cpus / 4 GB) that in turn dispatches each
+pipeline step as its own SLURM job — so the driver must stay alive for the whole
+run; keep it on a partition that allows a long wall time.
+
+| Script | Software profile | Tools come from |
+|---|---|---|
+| `run_phyling_singularity.sh` | `singularity_slurm,ucr_hpcc` | BioContainers images (auto-pulled) |
+| `run_phyling_pixi.sh` | `pixi_slurm,ucr_hpcc` | the project's pixi conda env |
+
+Both read their settings from environment variables with sensible defaults, so
+you can submit as-is or override per run:
+
+```bash
+mkdir -p logs            # the #SBATCH --out path needs this to exist first
+
+# Submit with the built-in defaults (protein, input dir ./pep, prefix my_project)
+sbatch run_phyling_singularity.sh
+
+# …or override any setting on the command line
+SEQ_TYPE=cds INPUT=cds PREFIX=mucor_v8 \
+  MARKERSET=fungi_odb12,mucoromycota_odb12 \
+  sbatch run_phyling_singularity.sh
+
+# pixi variant — same knobs
+SEQ_TYPE=protein INPUT=pep PREFIX=mucor_v8 sbatch run_phyling_pixi.sh
+```
+
+Both pass `-resume`, so re-submitting after an interruption continues from the
+last cached step. Settings exposed as variables: `SEQ_TYPE`, `INPUT`, `PREFIX`,
+`MARKERSET`, `OUTDIR` (and `NXF_SINGULARITY_CACHEDIR` for the Singularity
+launcher). Edit the `#SBATCH` header or the `module load nextflow/...` line to
+match your site.
+
+### Singularity image cache
+
+`run_phyling_singularity.sh` sets `NXF_SINGULARITY_CACHEDIR` to a shared lab path
+so images are pulled once and reused. If your compute nodes have no outbound
+network, pre-pull on a login node, e.g.:
+
+```bash
+singularity pull docker://quay.io/biocontainers/fasttree:2.2.0--h7b50bb2_1
 ```
 
 ---
@@ -152,7 +245,7 @@ nextflow run stajichlab/phyling-phylogenomics \
 
 | Parameter | Default | Description |
 |---|---|---|
-| `--mode` | `protein_tree` | Workflow: `cds_tree` or `protein_tree` |
+| `--seq_type` | `protein` | Workflow: `cds` or `protein` |
 | `--input` | *(required)* | Directory of `.fa` (CDS) or `.fa.gz` (protein) files |
 | `--prefix` | *(required)* | Base name for output files, e.g. `my_project_v1` |
 | `--markerset` | `fungi_odb12,mucoromycota_odb12` | Comma-separated BUSCO lineage names |
@@ -166,6 +259,10 @@ nextflow run stajichlab/phyling-phylogenomics \
 | `--pars_trees` | `10` | RAxML-NG parsimony starting trees |
 | `--bs_trees_cds` | `500` | RAxML-NG bootstrap replicates for CDS mode |
 | `--bs_trees_pep` | `100` | RAxML-NG bootstrap replicates for protein mode |
+| `--fasttree_max_cpus` | `8` | FastTreeMP CPU request (OMP threads) |
+| `--fasttree_model_prot` | `-lg` | FastTree protein model: `-lg`, `-wag`, or `''` for JTT |
+| `--fasttree_model_dna` | `-gtr` | FastTree DNA model: `-gtr`, or `''` for Jukes-Cantor |
+| `--fasttree_boot` | `1000` | Resamples for the FastTree SH-like local-support tree |
 | `--max_cpus` | `4` | Resource ceiling used only with `-profile vm`: caps every process's requested CPUs |
 | `--max_memory` | `14.GB` | Resource ceiling used only with `-profile vm`: caps every process's requested memory |
 | `--max_time` | `72.h` | Resource ceiling used only with `-profile vm`: caps every process's requested wall time |
@@ -192,22 +289,22 @@ lineage names.
 
 ## Example commands
 
-### Protein tree — SLURM + modules (UCR HPCC)
+### Protein tree — Singularity + SLURM (UCR HPCC)
 ```bash
 nextflow run stajichlab/phyling-phylogenomics \
-  -profile slurm,ucr_hpcc \
-  --mode protein_tree \
+  -profile singularity_slurm,ucr_hpcc \
+  --seq_type protein \
   --input pep/ \
   --prefix my_project_v1 \
   --markerset fungi_odb12,mucoromycota_odb12 \
   --outdir results/pep
 ```
 
-### CDS tree — SLURM + modules (UCR HPCC)
+### CDS tree — env modules + SLURM (UCR HPCC)
 ```bash
 nextflow run stajichlab/phyling-phylogenomics \
-  -profile slurm,ucr_hpcc \
-  --mode cds_tree \
+  -profile slurm,modules,ucr_hpcc \
+  --seq_type cds \
   --input cds/ \
   --prefix my_project_v1 \
   --markerset fungi_odb12,mucoromycota_odb12 \
@@ -217,8 +314,8 @@ nextflow run stajichlab/phyling-phylogenomics \
 ### Resume an interrupted run
 ```bash
 nextflow run stajichlab/phyling-phylogenomics -resume \
-  -profile slurm,ucr_hpcc \
-  --mode protein_tree \
+  -profile singularity_slurm,ucr_hpcc \
+  --seq_type protein \
   --input pep/ \
   --prefix my_project_v1 \
   --markerset fungi_odb12,mucoromycota_odb12 \
@@ -242,7 +339,10 @@ results/
     │   ├── *.aic.bs.treefile       IQ-TREE AIC bootstrap consensus
     │   ├── *.bic.bs.treefile       IQ-TREE BIC bootstrap consensus
     │   ├── *.aic.raxml.support     RAxML-NG AIC support tree
-    │   └── *.bic.raxml.support     RAxML-NG BIC support tree
+    │   ├── *.bic.raxml.support     RAxML-NG BIC support tree
+    │   └── fasttree/
+    │       ├── *.fasttree.nosupport.treefile  FastTreeMP tree, support disabled
+    │       └── *.fasttree.support.treefile    FastTreeMP tree, SH-like local support
     └── pipeline_info/
         ├── timeline.html
         ├── report.html
@@ -260,8 +360,13 @@ Tree files (`.treefile`, `.raxml.support`) are Newick format — open in FigTree
 | UFBoot2 (ultrafast bootstrap) | `-B 1000` | ≥ 95 |
 | SH-aLRT | `--alrt 1000` | ≥ 80 |
 | RAxML-NG bootstrap | `--bs-trees` | ≥ 70 |
+| FastTree SH-like local support | `-boot 1000` | ≥ 0.95 (0–1 scale) |
 
-UFBoot values are systematically higher than standard bootstrap — do not compare directly. A clade is robustly supported when all three exceed their thresholds.
+UFBoot values are systematically higher than standard bootstrap — do not compare
+directly. FastTree's value is a *local* support, not a full nonparametric
+bootstrap, so treat it as a fast sanity check rather than as equivalent to the
+RAxML/IQ-TREE numbers. A clade is robustly supported when UFBoot2, SH-aLRT, and
+the RAxML-NG bootstrap all exceed their thresholds.
 
 ---
 
@@ -269,20 +374,26 @@ UFBoot values are systematically higher than standard bootstrap — do not compa
 
 ```
 phyling-phylogenomics/
-├── main.nf                  entry point
-├── nextflow.config          params + profiles
-├── pixi.toml                conda/PyPI environment
+├── main.nf                       entry point
+├── nextflow.config               params + profiles
+├── pixi.toml                     conda/PyPI environment
+├── run_phyling_singularity.sh    sbatch launcher (Singularity + SLURM)
+├── run_phyling_pixi.sh           sbatch launcher (pixi + SLURM)
 ├── conf/
-│   ├── base.config          per-process resource labels
-│   └── ucr_hpcc.config      UCR HPCC queue assignments (site example)
+│   ├── base.config               per-process resource labels
+│   ├── singularity.config        per-process BioContainers images
+│   ├── modules.config            per-process `module load` lines (site example)
+│   └── ucr_hpcc.config           UCR HPCC queue assignments (site example)
 ├── workflows/
 │   ├── cds_tree.nf
 │   └── protein_tree.nf
+├── test/fasttree/                standalone FASTTREE smoke test (run_test.sh)
 └── modules/local/
     ├── phyling/{download,align,filter,tree}/
     ├── phykit/concat/
     ├── modeltestng/
     ├── iqtree/{mf,bootstrap}/
+    ├── fasttree/
     └── raxmlng/{parse,all}/
 ```
 
@@ -297,4 +408,5 @@ If you use this pipeline, please cite the underlying tools:
 - **ModelTest-NG**: Darriba et al. (2020) *Mol Biol Evol* 37:291–294 
 - **IQ-TREE 3**: Minh et al. (2020) *Mol Biol Evol* 37:1530–1534
 - **RAxML-NG**: Kozlov et al. (2019) *Bioinformatics* 35:4453–4455
+- **FastTree 2**: Price et al. (2010) *PLoS ONE* 5:e9490
 - **BUSCO**: Manni et al. (2021) *Mol Biol Evol* 38:4647–4654
