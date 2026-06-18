@@ -1,5 +1,5 @@
 [workspace]
-name = "mucor-phylogeny"
+name = "nf_phyling"
 channels = ["conda-forge","bioconda"]
 platforms = ["linux-64"]
 
@@ -11,6 +11,7 @@ raxml-ng   = "*"
 python     = ">=3.10"
 phyling	   = ">=2.3.1"
 pip = ">=26.0.1,<27"
+fasttree = ">=2.2.0,<3"
 
 [pypi-dependencies]
 # phyling and phykit are Python tools; install from PyPI if not on bioconda
