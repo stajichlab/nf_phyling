@@ -4,13 +4,14 @@ description: >
   Multi-locus fungal and microbial phylogenomics pipeline: PHYling (BUSCO-based
   marker alignment and filtering) → PhyKIT (MSA concatenation) → ModelTest-NG
   (partitioned model selection, AIC + BIC) → IQ-TREE 3 (ML tree + UFBoot2 +
-  SH-aLRT) → RAxML-NG (independent ML search + bootstraps). Wraps a Nextflow
+  SH-aLRT) → RAxML-NG (independent ML search + bootstraps) → FastTreeMP (fast
+  approximate-ML tree on the concatenation). Wraps a Nextflow
   DSL2 pipeline with two named workflows: CDS_TREE (DNA) and PROTEIN_TREE (amino
   acid). Runs on SLURM HPC clusters via environment modules or a pixi-managed
   conda environment. Use this skill whenever the user wants to build a multi-locus
   phylogeny from BUSCO markers, run PHYling align/filter/tree, concatenate filtered
-  MSAs with PhyKIT, select substitution models with ModelTest-NG, or run IQ-TREE
-  or RAxML-NG on a partitioned alignment. Also trigger for questions about
+  MSAs with PhyKIT, select substitution models with ModelTest-NG, or run IQ-TREE,
+  RAxML-NG or FastTree on a partitioned/concatenated alignment. Also trigger for questions about
   markerset selection (fungi_odb12, mucoromycota_odb12, etc.), the cds_tree or
   protein_tree workflows, filtering occupancy thresholds, AIC vs BIC model
   selection, or UFBoot vs standard bootstrap in the context of phylogenomics.
@@ -28,7 +29,8 @@ nextflow/main.nf
 ```
 
 The pipeline covers everything from BUSCO-marker alignment through partitioned
-ML trees with bootstrap support in both IQ-TREE and RAxML-NG.
+ML trees with bootstrap support in both IQ-TREE and RAxML-NG, plus a fast
+approximate-ML FastTreeMP tree on the concatenated alignment.
 
 ---
 
@@ -67,10 +69,19 @@ INPUT: one .fa or .fa.gz per taxon
   iqtree3 UFBoot      Bootstrap on best partition scheme (-B 1000 --alrt 1000 --bnni)
   raxml-ng --parse    Convert alignment to binary; extract thread recommendation
   raxml-ng --all      ML search + bootstraps (pars{10} starts; 500 bs for CDS, 100 for pep)
+  FastTreeMP          Fast approximate-ML tree on the concatenation (single model: -lg / -gtr)
+                      Two runs: -nosupport, and -boot SH-like local support
 ```
 
+IQ-TREE, RAxML-NG and FastTree are deliberately independent — they all run
+straight off the concat/modeltest output, and one failing is set to `ignore` so
+it cannot block the others. FastTree runs once per markerset (it applies a single
+model across the whole alignment and cannot consume the partitioned ModelTest-NG
+scheme), so it does not split into AIC/BIC.
+
 Final outputs per markerset: two trees (AIC, BIC) from each of IQ-TREE and
-RAxML-NG, each with bootstrap support.
+RAxML-NG, each with bootstrap support, plus two FastTreeMP trees on the
+concatenation (one `-nosupport`, one with SH-like local support).
 
 ---
 
@@ -111,7 +122,7 @@ site profile alongside `slurm` or `pixi_slurm`.
 | `local` | local | tools must be in PATH | quick tests |
 
 For UCR HPCC use `-profile slurm,ucr_hpcc`. Module names expected:
-`phyling`, `phykit`, `modeltest-ng`, `iqtree`, `raxml-ng`.
+`phyling`, `phykit`, `modeltest-ng`, `iqtree`, `raxml-ng`, `fasttree`.
 
 ---
 
@@ -216,6 +227,10 @@ nextflow run stajichlab/phyling-phylogenomics -resume \
 | `--bs_trees_pep` | `100` | RAxML-NG bootstrap for protein; protein runs are slower |
 | `--rcluster` | `10` | IQ-TREE partition merging aggressiveness (% retained); raise if too slow |
 | `--pars_trees` | `10` | RAxML-NG parsimony starting trees; 10–25 is typical |
+| `--fasttree_max_cpus` | `8` | OMP threads for FastTreeMP (parallelism saturates early) |
+| `--fasttree_model_prot` | `-lg` | FastTree protein model: `-lg`, `-wag`, or `''` for the JTT default |
+| `--fasttree_model_dna` | `-gtr` | FastTree DNA model: `-gtr`, or `''` for the Jukes-Cantor default |
+| `--fasttree_boot` | `1000` | Resamples for the FastTree SH-like local-support tree |
 | `--publish_mode` | `copy` | Use `link` (hard link) on same-filesystem HPC to save disk space |
 
 ---
@@ -235,7 +250,10 @@ results/
     │   ├── *.aic.bs.treefile       IQ-TREE AIC bootstrap consensus
     │   ├── *.bic.bs.treefile       IQ-TREE BIC bootstrap consensus
     │   ├── *.aic.raxml.support     RAxML-NG AIC support tree
-    │   └── *.bic.raxml.support     RAxML-NG BIC support tree
+    │   ├── *.bic.raxml.support     RAxML-NG BIC support tree
+    │   └── fasttree/
+    │       ├── *.fasttree.nosupport.treefile  FastTreeMP tree, support disabled
+    │       └── *.fasttree.support.treefile    FastTreeMP tree, SH-like local support
     └── pipeline_info/
         ├── timeline.html
         ├── report.html
@@ -263,7 +281,8 @@ pixi install
 ```
 
 Tools installed by pixi: `nextflow`, `modeltest-ng`, `iqtree` (provides `iqtree3`),
-`raxml-ng` from bioconda; `phykit` and `phyling` from PyPI.
+`raxml-ng`, `fasttree` (provides `FastTreeMP`) from bioconda; `phykit` and
+`phyling` from PyPI.
 
 ---
 
@@ -326,8 +345,10 @@ Trees from this pipeline carry two support measures on the same run:
 - **UFBoot (IQ-TREE `-B`)**: ultrafast bootstrap approximation; values ≥ 95 indicate strong support (note: UFBoot values are systematically higher than standard bootstrap — don't compare directly)
 - **SH-aLRT (`--alrt`)**: likelihood ratio test; values ≥ 80 are generally considered supported
 - **RAxML-NG bootstraps**: standard (slow) bootstraps; ≥ 70 is the conventional threshold
+- **FastTree SH-like local support** (`*.fasttree.support.treefile`): a quick local test from `-boot` resamples, scaled 0–1 (≥ 0.95 ≈ strong). It is a *local* support, not a full nonparametric bootstrap — treat it as a fast sanity check, not as equivalent to the RAxML/IQ-TREE values.
 
-A clade is considered robustly supported when all three agree.
+A clade is considered robustly supported when all three rigorous measures
+(UFBoot, SH-aLRT, RAxML bootstrap) agree; FastTree is the fast first look.
 
 ---
 
@@ -347,5 +368,6 @@ pipeline/nextflow/
     ├── phykit/concat/
     ├── modeltestng/
     ├── iqtree/{mf,bootstrap}/
+    ├── fasttree/
     └── raxmlng/{parse,all}/
 ```

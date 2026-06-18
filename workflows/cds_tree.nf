@@ -8,6 +8,7 @@ include { PHYKIT_CONCAT     } from '../modules/local/phykit/concat/main'
 include { MODELTEST_NG      } from '../modules/local/modeltestng/main'
 include { IQTREE_MF         } from '../modules/local/iqtree/mf/main'
 include { IQTREE_BOOTSTRAP  } from '../modules/local/iqtree/bootstrap/main'
+include { FASTTREE          } from '../modules/local/fasttree/main'
 include { RAXMLNG_PARSE     } from '../modules/local/raxmlng/parse/main'
 include { RAXMLNG_ALL       } from '../modules/local/raxmlng/all/main'
 
@@ -68,6 +69,11 @@ workflow CDS_TREE {
     // allocation from iqtree_max_cpus and self-scales within it via -T AUTO.
     IQTREE_MF(ch_scored)
     IQTREE_BOOTSTRAP(IQTREE_MF.out.best_scheme)
+
+    // FastTreeMP: a fast approximate-ML tree on the concatenated alignment.
+    // Runs off PHYKIT_CONCAT directly — one tree per markerset, single model
+    // (no partitions), fully independent of modeltest / iqtree / raxml.
+    FASTTREE(PHYKIT_CONCAT.out.concat)
 
     // RAxML-NG ML search + bootstraps
     RAXMLNG_ALL(RAXMLNG_PARSE.out.parsed, params.bs_trees_cds)
