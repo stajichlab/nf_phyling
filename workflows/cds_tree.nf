@@ -48,33 +48,31 @@ workflow CDS_TREE {
     }
     PHYKIT_CONCAT(ch_for_concat, data_type)
 
-    // ── Step 5: ModelTest-NG partitioned model selection ──────────
-    MODELTEST_NG(PHYKIT_CONCAT.out.concat)
-
-    // ── Step 6: split AIC / BIC and run IQ-TREE + RAxML-NG ───────
-    ch_aic = MODELTEST_NG.out.partitions.map { ms, m, fa, part_aic, part_bic ->
-        [ ms, m, fa, part_aic, 'aic' ]
-    }
-    ch_bic = MODELTEST_NG.out.partitions.map { ms, m, fa, part_aic, part_bic ->
-        [ ms, m, fa, part_bic, 'bic' ]
-    }
-    ch_scored = ch_aic.mix(ch_bic)
-
-    // RAxML-NG: parse binary + thread advice (cheap, cpus=1) for the RAxML ML search only.
-    RAXMLNG_PARSE(ch_scored)
-
-    // IQ-TREE: model-finder + merge tree, then UFBoot + SH-aLRT.
-    // Runs straight off the scored alignments — deliberately independent of every RAxML step,
-    // so a raxml-ng failure (parse or ML search) cannot block IQ-TREE. IQ-TREE sizes its own
-    // allocation from iqtree_max_cpus and self-scales within it via -T AUTO.
-    IQTREE_MF(ch_scored)
-    IQTREE_BOOTSTRAP(IQTREE_MF.out.best_scheme)
-
-    // FastTreeMP: a fast approximate-ML tree on the concatenated alignment.
-    // Runs off PHYKIT_CONCAT directly — one tree per markerset, single model
-    // (no partitions), fully independent of modeltest / iqtree / raxml.
+    // ── Step 5: FastTreeMP (always runs) ────────────────────────
+    // Fast approximate-ML tree on the concatenated alignment.
+    // Single model (no partitions), fully independent of modeltest / iqtree / raxml.
     FASTTREE(PHYKIT_CONCAT.out.concat)
 
-    // RAxML-NG ML search + bootstraps
-    RAXMLNG_ALL(RAXMLNG_PARSE.out.parsed, params.bs_trees_cds)
+    // ── Step 6 (optional): ModelTest-NG → IQ-TREE / RAxML-NG ─
+    if (params.enable_iqtree || params.enable_raxml) {
+        MODELTEST_NG(PHYKIT_CONCAT.out.concat)
+
+        ch_aic = MODELTEST_NG.out.partitions.map { ms, m, fa, part_aic, part_bic ->
+            [ ms, m, fa, part_aic, 'aic' ]
+        }
+        ch_bic = MODELTEST_NG.out.partitions.map { ms, m, fa, part_aic, part_bic ->
+            [ ms, m, fa, part_bic, 'bic' ]
+        }
+        ch_scored = ch_aic.mix(ch_bic)
+
+        if (params.enable_raxml) {
+            RAXMLNG_PARSE(ch_scored)
+            RAXMLNG_ALL(RAXMLNG_PARSE.out.parsed, params.bs_trees_cds)
+        }
+
+        if (params.enable_iqtree) {
+            IQTREE_MF(ch_scored)
+            IQTREE_BOOTSTRAP(IQTREE_MF.out.best_scheme)
+        }
+    }
 }
