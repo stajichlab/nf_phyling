@@ -49,7 +49,7 @@ INPUT: one sequence file per taxon
 ### Run directly from GitHub (no clone needed)
 
 ```bash
-nextflow run stajichlab/phyling-phylogenomics \
+nextflow run stajichlab/nf_phyling \
   -profile singularity_slurm,ucr_hpcc \
   --seq_type protein \
   --input /path/to/pep \
@@ -70,8 +70,8 @@ sbatch run_phyling_pixi.sh           # pixi-managed conda env
 ### Clone and run locally
 
 ```bash
-git clone https://github.com/stajichlab/phyling-phylogenomics
-cd phyling-phylogenomics
+git clone https://github.com/stajichlab/nf_phyling
+cd nf_phyling
 
 nextflow run main.nf \
   -profile local \
@@ -97,7 +97,7 @@ pulls its BioContainers image automatically. Set a shared cache so images aren't
 re-pulled per user:
 
 ```bash
-export NXF_SINGULARITY_CACHEDIR=/bigdata/stajichlab/shared/singularity_cache
+export NXF_SINGULARITY_CACHEDIR=.../singularity_cache
 ```
 
 Use `-profile singularity` (local) or `-profile singularity_slurm` (SLURM).
@@ -185,7 +185,7 @@ process {
 ```
 
 ```bash
-nextflow run stajichlab/phyling-phylogenomics \
+nextflow run stajichlab/nf_phyling \
   -profile singularity_slurm -c my_cluster.config \
   --seq_type protein --input pep/ --prefix my_project \
   --markerset fungi_odb12
@@ -291,7 +291,7 @@ lineage names.
 
 ### Protein tree — Singularity + SLURM (UCR HPCC)
 ```bash
-nextflow run stajichlab/phyling-phylogenomics \
+nextflow run stajichlab/nf_phyling \
   -profile singularity_slurm,ucr_hpcc \
   --seq_type protein \
   --input pep/ \
@@ -302,7 +302,7 @@ nextflow run stajichlab/phyling-phylogenomics \
 
 ### CDS tree — env modules + SLURM (UCR HPCC)
 ```bash
-nextflow run stajichlab/phyling-phylogenomics \
+nextflow run stajichlab/nf_phyling \
   -profile slurm,modules,ucr_hpcc \
   --seq_type cds \
   --input cds/ \
@@ -313,7 +313,7 @@ nextflow run stajichlab/phyling-phylogenomics \
 
 ### Resume an interrupted run
 ```bash
-nextflow run stajichlab/phyling-phylogenomics -resume \
+nextflow run stajichlab/nf_phyling -resume \
   -profile singularity_slurm,ucr_hpcc \
   --seq_type protein \
   --input pep/ \
@@ -373,7 +373,7 @@ the RAxML-NG bootstrap all exceed their thresholds.
 ## Repository structure
 
 ```
-phyling-phylogenomics/
+nf_phyling/
 ├── main.nf                       entry point
 ├── nextflow.config               params + profiles
 ├── pixi.toml                     conda/PyPI environment

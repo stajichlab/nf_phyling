@@ -1,373 +1,192 @@
 ---
 name: phyling-phylogenomics
 description: >
-  Multi-locus fungal and microbial phylogenomics pipeline: PHYling (BUSCO-based
-  marker alignment and filtering) → PhyKIT (MSA concatenation) → ModelTest-NG
-  (partitioned model selection, AIC + BIC) → IQ-TREE 3 (ML tree + UFBoot2 +
-  SH-aLRT) → RAxML-NG (independent ML search + bootstraps) → FastTreeMP (fast
-  approximate-ML tree on the concatenation). Wraps a Nextflow
-  DSL2 pipeline with two named workflows: CDS_TREE (DNA) and PROTEIN_TREE (amino
-  acid). Runs on SLURM HPC clusters via environment modules or a pixi-managed
-  conda environment. Use this skill whenever the user wants to build a multi-locus
-  phylogeny from BUSCO markers, run PHYling align/filter/tree, concatenate filtered
-  MSAs with PhyKIT, select substitution models with ModelTest-NG, or run IQ-TREE,
-  RAxML-NG or FastTree on a partitioned/concatenated alignment. Also trigger for questions about
-  markerset selection (fungi_odb12, mucoromycota_odb12, etc.), the cds_tree or
-  protein_tree workflows, filtering occupancy thresholds, AIC vs BIC model
-  selection, or UFBoot vs standard bootstrap in the context of phylogenomics.
-  Trigger proactively when the user mentions they have genome annotations or
-  proteomes and want to place taxa in a phylogeny.
+  Multi-locus phylogenomics pipeline: PHYling (BUSCO markers) → PhyKIT concat →
+  ModelTest-NG → IQ-TREE + RAxML-NG + FastTreeMP. Two workflows: `cds_tree` (DNA)
+  and `protein_tree` (AA). Runs on SLURM HPC via modules or pixi. Trigger when
+  user wants BUSCO phylogeny, multi-locus tree, partitioned ML analysis, or has
+  genomes/proteomes to place in a phylogeny.
 ---
 
-# PHYling Phylogenomics Skill
+# PHYling Phylogenomics
 
-You help the user set up and run a complete multi-locus phylogenomics analysis
-using the Nextflow pipeline at:
+Primary pipeline: `/rhome/jstajich/git_lab/phyling-phylogenomics/nextflow/main.nf`
+GitHub fallback: `stajichlab/phyling-phylogenomics` (Nextflow fetches automatically)
 
-```
-nextflow/main.nf
-```
+## Quick-start questions
 
-The pipeline covers everything from BUSCO-marker alignment through partitioned
-ML trees with bootstrap support in both IQ-TREE and RAxML-NG, plus a fast
-approximate-ML FastTreeMP tree on the concatenated alignment.
+Ask (or infer) before generating commands:
 
----
-
-## Step 1 — Gather information
-
-Before generating any commands, ask (or infer from context) the following.
-Don't ask for things the user has already told you.
-
-| Item | Notes / defaults |
+| Item | Default / notes |
 |---|---|
-| **Mode** | `cds_tree` (DNA) or `protein_tree` (amino acid) |
-| **Input directory** | Path to `.fa` (CDS) or `.fa.gz` (protein) files — one file per taxon |
-| **Project prefix** | Base name for output files, e.g. `mucor_jena_v8` |
-| **Markersets** | Comma-separated BUSCO lineage names — see Markerset Guide below |
-| **Output directory** | Where results are published; suggest `results/cds` or `results/pep` |
-| **Execution profile** | `slurm`, `pixi`, `pixi_slurm`, or `local` — see Profiles section |
-| **Pipeline location** | Absolute path to `main.nf`; confirm with user if unsure |
+| Mode | `cds_tree` or `protein_tree` |
+| Input | `.fa` (CDS) or `.fa.gz` (protein), one file per taxon |
+| Prefix | Base name for outputs, e.g. `mucor_jena_v8` |
+| Markersets | BUSCO lineages — see below |
+| Outdir | `results/cds` or `results/pep` |
+| Profile | `slurm,ucr_hpcc` (modules) · `pixi_slurm,ucr_hpcc` · `local` · `pixi` |
 
----
-
-## Pipeline overview
+## Pipeline flow
 
 ```
-INPUT: one .fa or .fa.gz per taxon
-         ↓ (per markerset, in parallel)
-  phyling align       BUSCO-based marker search and MSA
-  phyling filter      Drop loci where < --min-taxa-pct % of taxa present (default 80%)
-  phyling tree        Per-gene FastTree (exploratory; runs in parallel with concat)
-         ↓
-  phykit create_concat   Concatenate filtered MSAs; write NEXUS partition file
-  sed AUTO→DNA/PROT       Fix data-type in partition file
-         ↓
-  modeltest-ng        Partitioned model selection; produces AIC and BIC partition files
-         ↓          (AIC and BIC paths run in parallel from here)
-  iqtree3 MF+MERGE    Model-finder + partition merging + ML tree (-rcluster 10)
-  iqtree3 UFBoot      Bootstrap on best partition scheme (-B 1000 --alrt 1000 --bnni)
-  raxml-ng --parse    Convert alignment to binary; extract thread recommendation
-  raxml-ng --all      ML search + bootstraps (pars{10} starts; 500 bs for CDS, 100 for pep)
-  FastTreeMP          Fast approximate-ML tree on the concatenation (single model: -lg / -gtr)
-                      Two runs: -nosupport, and -boot SH-like local support
+input → phyling align → phyling filter (--min-taxa-pct, default 80%)
+       → phyling tree (per-gene FastTree, exploratory)
+       → phykit create_concat → modeltest-ng (AIC + BIC)
+         ├─ iqtree3 MF+MERGE → UFBoot (-B 1000 --alrt 1000)
+         ├─ raxml-ng --parse → --all (500 bs CDS / 100 bs pep)
+         └─ FastTreeMP (single model: -gtr / -lg, two runs: -nosupport + -boot)
 ```
 
-IQ-TREE, RAxML-NG and FastTree are deliberately independent — they all run
-straight off the concat/modeltest output, and one failing is set to `ignore` so
-it cannot block the others. FastTree runs once per markerset (it applies a single
-model across the whole alignment and cannot consume the partitioned ModelTest-NG
-scheme), so it does not split into AIC/BIC.
+IQ-TREE, RAxML-NG, FastTree are independent — one failing cannot block others.
 
-Final outputs per markerset: two trees (AIC, BIC) from each of IQ-TREE and
-RAxML-NG, each with bootstrap support, plus two FastTreeMP trees on the
-concatenation (one `-nosupport`, one with SH-like local support).
+## Markersets
 
----
+Pattern: `{clade}_odb{10|12}`
 
-## Markerset guide
-
-BUSCO lineage names follow the pattern `{clade}_odb{version}`.
-
-| Lineage | Scope | Use when |
+| Lineage | Scope | Notes |
 |---|---|---|
-| `fungi_odb10` | All Fungi, ODB10 | broad fungal phylogeny, legacy dataset |
-| `fungi_odb12` | All Fungi, ODB12 | broad fungal phylogeny, current preferred |
-| `mucoromycota_odb10` | Mucoromycota, ODB10 | Mucoromycota-focused, legacy |
-| `mucoromycota_odb12` | Mucoromycota, ODB12 | Mucoromycota-focused, current preferred |
-| `basidiomycota_odb10` | Basidiomycota | Basidiomycota studies |
-| `ascomycota_odb10` | Ascomycota | Ascomycota studies |
+| `fungi_odb12` | All Fungi | **Preferred** for broad phylogeny |
+| `fungi_odb10` | All Fungi | Legacy |
+| `mucoromycota_odb12` | Mucoromycota | **Preferred** for Mucoromycota-focused |
+| `mucoromycota_odb10` | Mucoromycota | Legacy |
+| `basidiomycota_odb10` | Basidiomycota | — |
+| `ascomycota_odb10` | Ascomycota | — |
 
-**Recommended combinations:**
-- Mucoromycota project: `--markerset fungi_odb12,mucoromycota_odb12`
-- Broad Fungi with legacy comparison: `--markerset fungi_odb10,fungi_odb12`
-- Full Mucoromycota project (protein): `--markerset fungi_odb10,fungi_odb12,mucoromycota_odb10,mucoromycota_odb12`
-
-Each markerset runs as an independent Nextflow branch — you get a separate tree
-set per markerset, which is useful for comparing marker resolution.
-
----
+**Common combos:** `--markerset fungi_odb12` · `fungi_odb12,mucoromycota_odb12` · `fungi_odb10,fungi_odb12,mucoromycota_odb10,mucoromycota_odb12` (full Mucoromycota protein)
 
 ## Execution profiles
 
-Profiles can be combined with commas. Queue names are cluster-specific — supply a
-site profile alongside `slurm` or `pixi_slurm`.
+| Profile | Executor | Notes |
+|---|---|---|
+| `slurm` | SLURM | With `module load` per tool |
+| `ucr_hpcc` | — | UCR HPCC queues; combine with `slurm` or `pixi_slurm` |
+| `pixi` | local | pixi-managed conda env |
+| `pixi_slurm` | SLURM | pixi via `pixi shell-hook` |
+| `local` | local | Tools must be in PATH |
 
-| Profile | Executor | Environment | Use when |
-|---|---|---|---|
-| `slurm` | SLURM | `module load` per tool | HPC with environment modules |
-| `ucr_hpcc` | — | — | UCR HPCC queue names; combine with `slurm` or `pixi_slurm` |
-| `pixi` | local | pixi-managed conda env | local workstation |
-| `pixi_slurm` | SLURM | pixi env via `pixi shell-hook` | HPCC without modules |
-| `local` | local | tools must be in PATH | quick tests |
+**UCR HPCC:** `-profile slurm,ucr_hpcc` · **Pixi+SLURM:** `-profile pixi_slurm,ucr_hpcc`
 
-For UCR HPCC use `-profile slurm,ucr_hpcc`. Module names expected:
-`phyling`, `phykit`, `modeltest-ng`, `iqtree`, `raxml-ng`, `fasttree`.
+## Commands
 
----
-
-## Command templates
-
-The pipeline is published at `stajichlab/phyling-phylogenomics` on GitHub.
-Nextflow fetches it automatically — no clone required.
-
-### CDS tree — SLURM + modules (UCR HPCC)
+### UCR HPCC (modules) — local pipeline
 
 ```bash
-nextflow run stajichlab/phyling-phylogenomics \
-  -profile slurm,ucr_hpcc \
-  --seq_type cds \
-  --input /path/to/cds \
-  --prefix MYPROJECT_v1 \
-  --markerset fungi_odb12,mucoromycota_odb12 \
-  --outdir results/cds
+nextflow run nextflow/main.nf -profile slurm,ucr_hpcc \
+  --seq_type cds --input /path/to/cds --prefix PROJ_v1 \
+  --markerset fungi_odb12,mucoromycota_odb12 --outdir results/cds
+
+# Protein
+nextflow run nextflow/main.nf -profile slurm,ucr_hpcc \
+  --seq_type protein --input /path/to/pep --prefix PROJ_v1 \
+  --markerset fungi_odb12,mucoromycota_odb12 --outdir results/pep
 ```
 
-### Protein tree — SLURM + modules (UCR HPCC)
+### Pixi + SLURM (UCR HPCC)
 
 ```bash
-nextflow run stajichlab/phyling-phylogenomics \
-  -profile slurm,ucr_hpcc \
-  --seq_type protein \
-  --input /path/to/pep \
-  --prefix MYPROJECT_v1 \
-  --markerset fungi_odb12,mucoromycota_odb12 \
-  --outdir results/pep
+pixi install  # once
+pixi run run-pep -- --input /path/to/pep --prefix PROJ_v1 \
+  --markerset fungi_odb12 --outdir results/pep -profile pixi_slurm,ucr_hpcc
 ```
 
-### Other SLURM cluster (custom queue names)
+### Custom SLURM cluster
 
 ```bash
-# my_cluster.config — minimal site config
+# Add to nextflow.config or separate file:
 # process {
 #   withName: 'PHYLING_ALIGN'    { queue = 'bigmem' }
-#   withName: 'MODELTEST_NG|IQTREE_MF|IQTREE_BOOTSTRAP|RAXMLNG_ALL' { queue = 'compute' }
-#   withName: 'PHYLING_FILTER|PHYLING_TREE|PHYKIT_CONCAT|RAXMLNG_PARSE' { queue = 'short' }
+#   withName: 'MODELTEST_NG|...IQTREE...' { queue = 'compute' }
+#   withName: 'PHYLING_FILTER|...' { queue = 'short' }
 # }
-
-nextflow run stajichlab/nf_phyling \
-  -profile slurm -c my_cluster.config \
-  --seq_type protein \
-  --input /path/to/pep \
-  --prefix MYPROJECT_v1 \
-  --markerset fungi_odb12,mucoromycota_odb12 \
-  --outdir results/pep
+nextflow run stajichlab/nf_phyling -profile slurm -c my_cluster.config \
+  --seq_type protein --input /path/to/pep --prefix PROJ_v1 \
+  --markerset fungi_odb12 --outdir results/pep
 ```
 
-### Pixi environment + SLURM (UCR HPCC)
+### Resume interrupted run
 
 ```bash
-# Clone once to use pixi tasks
-git clone https://github.com/stajichlab/nf_phyling
-cd phyling-phylogenomics
-pixi install   # once
-
-pixi run run-pep -- \
-  --input /path/to/pep \
-  --prefix MYPROJECT_v1 \
-  --markerset fungi_odb12,mucoromycota_odb12 \
-  --outdir results/pep \
-  -profile pixi_slurm,ucr_hpcc
+nextflow run stajichlab/nf_phyling -resume [same flags as original]
 ```
 
-### Local test (single markerset, no SLURM)
+### Local test
 
 ```bash
-nextflow run stajichlab/nf_phyling \
-  -profile local \
-  --seq_type cds \
-  --input /path/to/cds \
-  --prefix test \
-  --markerset fungi_odb12 \
-  --outdir results/test
+cd /rhome/jstajich/git_lab/phyling-phylogenomics
+nextflow run nextflow/main.nf -profile local \
+  --seq_type cds --input /path/to/cds --prefix test \
+  --markerset fungi_odb12 --outdir results/test
 ```
 
-### Resume an interrupted run
-
-```bash
-nextflow run stajichlab/phyling-phylogenomics -resume \
-  -profile slurm,ucr_hpcc \
-  --seq_type cds \
-  --input /path/to/cds \
-  --prefix MYPROJECT_v1 \
-  --markerset fungi_odb12,mucoromycota_odb12 \
-  --outdir results/cds
-```
-
----
-
-## Key parameters to tune
+## Key parameters
 
 | Parameter | Default | When to change |
 |---|---|---|
-| `--top_n_to_keep` | `80` | Number of top markers to retain (`TOP_N_TOVERR` in phyling); lower (e.g. 60) for sparse datasets |
-| `--bs_count` | `1000` | UFBoot replicates — 1000 is standard; don't go below 1000 |
-| `--alrt_count` | `1000` | SH-aLRT replicates — report alongside UFBoot for support |
-| `--bs_trees_cds` | `500` | RAxML-NG bootstrap for CDS; 100–500 is typical |
-| `--bs_trees_pep` | `100` | RAxML-NG bootstrap for protein; protein runs are slower |
-| `--rcluster` | `10` | IQ-TREE partition merging aggressiveness (% retained); raise if too slow |
-| `--pars_trees` | `10` | RAxML-NG parsimony starting trees; 10–25 is typical |
-| `--fasttree_max_cpus` | `8` | OMP threads for FastTreeMP (parallelism saturates early) |
-| `--fasttree_model_prot` | `-lg` | FastTree protein model: `-lg`, `-wag`, or `''` for the JTT default |
-| `--fasttree_model_dna` | `-gtr` | FastTree DNA model: `-gtr`, or `''` for the Jukes-Cantor default |
-| `--fasttree_boot` | `1000` | Resamples for the FastTree SH-like local-support tree |
-| `--publish_mode` | `copy` | Use `link` (hard link) on same-filesystem HPC to save disk space |
-
----
+| `--top_n_to_keep` | `80` | Lower (60) for sparse datasets |
+| `--bs_count` | `1000` | UFBoot replicates — don't go below 1000 |
+| `--alrt_count` | `1000` | SH-aLRT replicates |
+| `--bs_trees_cds` | `500` | RAxML-NG bootstrap (CDS) |
+| `--bs_trees_pep` | `100` | RAxML-NG bootstrap (protein) |
+| `--rcluster` | `10` | IQ-TREE partition merging; raise if too slow |
+| `--pars_trees` | `10` | RAxML-NG parsimony starting trees (10–25) |
+| `--publish_mode` | `copy` | Use `link` on same-filesystem HPC |
 
 ## Output structure
 
 ```
-results/
-└── {cds|pep}/
-    ├── align/{markerset}/          phyling align output
-    ├── filter/{markerset}/         filtered .mfa files (one per locus)
-    ├── tree/{markerset}/           per-gene FastTree trees
-    ├── buildtree/{markerset}/
-    │   ├── *.fa                    concatenated alignment
-    │   ├── *.partition             partition file (data-type fixed)
-    │   ├── *.part.aic / *.part.bic modeltest-ng AIC and BIC schemes
-    │   ├── *.aic.bs.treefile       IQ-TREE AIC bootstrap consensus
-    │   ├── *.bic.bs.treefile       IQ-TREE BIC bootstrap consensus
-    │   ├── *.aic.raxml.support     RAxML-NG AIC support tree
-    │   ├── *.bic.raxml.support     RAxML-NG BIC support tree
-    │   └── fasttree/
-    │       ├── *.fasttree.nosupport.treefile  FastTreeMP tree, support disabled
-    │       └── *.fasttree.support.treefile    FastTreeMP tree, SH-like local support
-    └── pipeline_info/
-        ├── timeline.html
-        ├── report.html
-        └── dag.svg
+results/{cds|pep}/
+├── align/{markerset}/           phyling align
+├── filter/{markerset}/          filtered .mfa files
+├── tree/{markerset}/            per-gene FastTree
+└── buildtree/{markerset}/
+    ├── *.fa                     concatenated alignment
+    ├── *.partition              partition file (DNA/PROT fixed)
+    ├── *.part.aic / *.part.bic  ModelTest-NG schemes
+    ├── *.aic.bs.treefile        IQ-TREE AIC bootstrap consensus
+    ├── *.bic.bs.treefile        IQ-TREE BIC bootstrap consensus
+    ├── *.aic.raxml.support      RAxML-NG AIC support tree
+    ├── *.bic.raxml.support      RAxML-NG BIC support tree
+    └── fasttree/
+        ├── *.nosupport.treefile
+        └── *.support.treefile   (SH-like local support, 0–1 scale)
 ```
 
-**Primary result files** to report/visualise:
-- `*.bs.treefile` — IQ-TREE bootstrap consensus (Newick; open in FigTree, iTOL, ggtree)
-- `*.raxml.support` — RAxML-NG bootstrap support tree (same format)
+**Primary results:** `*.bs.treefile` and `*.raxml.support` (Newick; view in FigTree/iTOL/ggtree)
 
----
-
-## Environment setup (pixi)
-
-If the user needs to install the environment for the first time:
+## Monitoring & troubleshooting
 
 ```bash
-cd pipeline/nextflow
-
-# Install pixi (if not already available)
-curl -fsSL https://pixi.sh/install.sh | bash
-
-# Install all pipeline tools
-pixi install
+tail -f .nextflow.log        # live log
+squeue -u $USER              # SLURM jobs
+ls work/??/*/                # work directories
+cat work/<hash>/.command.log # per-process output
 ```
 
-Tools installed by pixi: `nextflow`, `modeltest-ng`, `iqtree` (provides `iqtree3`),
-`raxml-ng`, `fasttree` (provides `FastTreeMP`) from bioconda; `phykit` and
-`phyling` from PyPI.
+| Problem | Solution |
+|---|---|
+| `phyling align` finds 0 markers | Check input format (`.fa` / `.fa.gz`) and markerset name (`fungi_odb12`, not `fungi12`) |
+| `phyling filter` empty | Too few taxa have marker — lower `--top_n_to_keep 60` |
+| `phykit concat` fails | Filter step produced no `.mfa` files |
+| `modeltest-ng` slow | Normal (12–48h for large datasets on epyc); don't kill |
+| IQ-TREE partition error | Check `.partition` file for leftover `AUTO` — should be `DNA`/`PROT` |
+| RAxML-NG thread warning | Parse step recommends thread count; pipeline reads `.raxml.log` automatically |
 
----
+**Always use `-resume`** — Nextflow caches completed processes in `work/`.
 
-## Monitoring a SLURM run
+## Support interpretation
 
-Nextflow manages SLURM job submission automatically. To watch progress:
+| Measure | Tool | Threshold |
+|---|---|---|
+| UFBoot ≥ 95 | IQ-TREE | Strong (note: UFBoot inflated vs standard bootstrap) |
+| SH-aLRT ≥ 80 | IQ-TREE | Supported |
+| Bootstrap ≥ 70 | RAxML-NG | Robust |
+| SH-like 0–1 ≥ 0.95 | FastTreeMP | Fast sanity check only (local support, not equivalent to full bootstrap) |
+
+**Robust clade:** UFBoot, SH-aLRT, and RAxML bootstrap all agree. FastTree is the quick first look.
+
+## Environment (pixi)
 
 ```bash
-# Live Nextflow log (run from the directory where nextflow was launched)
-tail -f .nextflow.log
-
-# Check submitted SLURM jobs
-squeue -u $USER
-
-# Watch the work directory for a specific process
-ls work/??/*/  # Nextflow hashes work dirs
-```
-
-Each process writes its stdout/stderr to `work/<hash>/.command.log` — check
-there first when a process fails.
-
----
-
-## Troubleshooting
-
-**`phyling align` fails / finds 0 markers**
-- Confirm the input directory contains `.fa` (CDS) or `.fa.gz` (protein) files
-- Confirm the markerset name is exactly correct (e.g. `fungi_odb12` not `fungi12`)
-- The align step uses 384 GB RAM on highmem — check the job actually ran on highmem
-
-**`phyling filter` produces empty output**
-- Too few taxa have the marker — lower `--top_n_to_keep` (e.g. `--top_n_to_keep 60`)
-- Check the align output directory has `.msa` files
-
-**`phykit create_concat` fails**
-- Filter output directory has no `.mfa` files — the filter step likely produced nothing
-- Check `filter/{markerset}/filter_out/` for `.mfa` files
-
-**`modeltest-ng` is very slow**
-- Normal — it evaluates substitution models per partition
-- Runs on epyc (48 CPUs, 128 GB); allow 12–48 hours for large datasets
-
-**IQ-TREE exits with error on partition file**
-- The `AUTO` → `DNA`/`PROT` sed replacement may have been skipped
-- Check the `.partition` file: `grep AUTO results/.../buildtree/*/*.partition`
-
-**RAxML-NG thread warning**
-- The parse step recommends a thread count based on alignment size
-- The pipeline reads this recommendation automatically from the `.raxml.log` file
-
-**Resuming after failure**
-- Always add `-resume` — Nextflow caches completed processes and will skip them
-- Cached results live in `work/` — don't delete this directory mid-run
-
----
-
-## Interpreting support values
-
-Trees from this pipeline carry two support measures on the same run:
-- **UFBoot (IQ-TREE `-B`)**: ultrafast bootstrap approximation; values ≥ 95 indicate strong support (note: UFBoot values are systematically higher than standard bootstrap — don't compare directly)
-- **SH-aLRT (`--alrt`)**: likelihood ratio test; values ≥ 80 are generally considered supported
-- **RAxML-NG bootstraps**: standard (slow) bootstraps; ≥ 70 is the conventional threshold
-- **FastTree SH-like local support** (`*.fasttree.support.treefile`): a quick local test from `-boot` resamples, scaled 0–1 (≥ 0.95 ≈ strong). It is a *local* support, not a full nonparametric bootstrap — treat it as a fast sanity check, not as equivalent to the RAxML/IQ-TREE values.
-
-A clade is considered robustly supported when all three rigorous measures
-(UFBoot, SH-aLRT, RAxML bootstrap) agree; FastTree is the fast first look.
-
----
-
-## Pipeline files
-
-```
-pipeline/nextflow/
-├── main.nf                  entry point
-├── nextflow.config          params + profiles
-├── pixi.toml                conda/PyPI environment
-├── conf/base.config         per-process CPU/mem/time
-├── workflows/
-│   ├── cds_tree.nf          CDS_TREE workflow
-│   └── protein_tree.nf      PROTEIN_TREE workflow
-└── modules/local/
-    ├── phyling/{align,filter,tree}/
-    ├── phykit/concat/
-    ├── modeltestng/
-    ├── iqtree/{mf,bootstrap}/
-    ├── fasttree/
-    └── raxmlng/{parse,all}/
+cd /rhome/jstajich/git_lab/phyling-phylogenomics/nextflow
+pixi install  # installs: nextflow, modeltest-ng, iqtree3, raxml-ng, FastTreeMP, phykit, phyling
 ```
