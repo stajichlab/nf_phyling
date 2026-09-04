@@ -63,7 +63,8 @@ On UCR HPCC the easiest path is one of the provided sbatch launchers — see
 
 ```bash
 mkdir -p logs
-sbatch run_phyling_singularity.sh    # Singularity/BioContainers
+sbatch run_phyling_singularity.sh    # Singularity/BioContainers (one image per tool)
+sbatch run_phyling_container.sh      # Singularity, ghcr.io/stajichlab/phyling image
 sbatch run_phyling_pixi.sh           # pixi-managed conda env
 ```
 
@@ -102,6 +103,14 @@ export NXF_SINGULARITY_CACHEDIR=.../singularity_cache
 
 Use `-profile singularity` (local) or `-profile singularity_slurm` (SLURM).
 
+An alternative to per-tool BioContainers images is the all-in-one
+`ghcr.io/stajichlab/phyling` image, which bundles phyling, phykit, IQ-TREE,
+RAxML-NG and FastTreeMP (ModelTest-NG still comes from its own BioContainers
+image — it isn't part of that image). Use `-profile phyling_container` (local)
+or `-profile phyling_container_slurm` (SLURM); see
+`conf/phyling_container.config` for details. Override the tag with
+`--phyling_image ghcr.io/stajichlab/phyling:2.5.0` if a newer one is published.
+
 ### Option B — pixi
 
 ```bash
@@ -132,6 +141,7 @@ convenience combinations that bundle the SLURM executor with a software layer.
 
 ```
   -profile singularity_slurm,ucr_hpcc   (Singularity + SLURM, UCR queues)
+  -profile phyling_container_slurm,ucr_hpcc  (stajichlab/phyling image + SLURM, UCR queues)
   -profile pixi_slurm,ucr_hpcc          (pixi env + SLURM, UCR queues)
   -profile slurm,modules,ucr_hpcc       (env modules + SLURM, UCR queues)
   -profile singularity                  (Singularity, local executor)
@@ -141,8 +151,10 @@ convenience combinations that bundle the SLURM executor with a software layer.
 |---|---|---|---|
 | `slurm` | SLURM | — (pair with a software profile) | HPC; the executor only |
 | `local` | local | — (tools in PATH) | quick testing |
-| `singularity` | local | BioContainers images | local workstation with Singularity |
-| `singularity_slurm` | SLURM | BioContainers images | HPC, portable (recommended) |
+| `singularity` | local | BioContainers images (one per tool) | local workstation with Singularity |
+| `singularity_slurm` | SLURM | BioContainers images (one per tool) | HPC, portable (recommended) |
+| `phyling_container` | local | `ghcr.io/stajichlab/phyling` (all-in-one, except ModelTest-NG) | local workstation with Singularity |
+| `phyling_container_slurm` | SLURM | `ghcr.io/stajichlab/phyling` (all-in-one, except ModelTest-NG) | HPC, single maintained image |
 | `pixi` | local | pixi conda env | local workstation with pixi |
 | `pixi_slurm` | SLURM | pixi conda env | HPC without site modules |
 | `modules` | — | `module load` per tool | pair with `slurm`; site-specific module names |
@@ -202,7 +214,8 @@ run; keep it on a partition that allows a long wall time.
 
 | Script | Software profile | Tools come from |
 |---|---|---|
-| `run_phyling_singularity.sh` | `singularity_slurm,ucr_hpcc` | BioContainers images (auto-pulled) |
+| `run_phyling_singularity.sh` | `singularity_slurm,ucr_hpcc` | BioContainers images (auto-pulled, one per tool) |
+| `run_phyling_container.sh` | `phyling_container_slurm,ucr_hpcc` | `ghcr.io/stajichlab/phyling` (auto-pulled, all-in-one except ModelTest-NG) |
 | `run_phyling_pixi.sh` | `pixi_slurm,ucr_hpcc` | the project's pixi conda env |
 
 Both read their settings from environment variables with sensible defaults, so
@@ -219,15 +232,19 @@ SEQ_TYPE=cds INPUT=cds PREFIX=mucor_v8 \
   MARKERSET=fungi_odb12,mucoromycota_odb12 \
   sbatch run_phyling_singularity.sh
 
+# stajichlab/phyling container variant — same knobs, plus PHYLING_IMAGE to pin a tag
+SEQ_TYPE=cds INPUT=cds PREFIX=mucor_v8 sbatch run_phyling_container.sh
+
 # pixi variant — same knobs
 SEQ_TYPE=protein INPUT=pep PREFIX=mucor_v8 sbatch run_phyling_pixi.sh
 ```
 
-Both pass `-resume`, so re-submitting after an interruption continues from the
-last cached step. Settings exposed as variables: `SEQ_TYPE`, `INPUT`, `PREFIX`,
-`MARKERSET`, `OUTDIR` (and `NXF_SINGULARITY_CACHEDIR` for the Singularity
-launcher). Edit the `#SBATCH` header or the `module load nextflow/...` line to
-match your site.
+All three pass `-resume`, so re-submitting after an interruption continues
+from the last cached step. Settings exposed as variables: `SEQ_TYPE`, `INPUT`,
+`PREFIX`, `MARKERSET`, `OUTDIR` (and `NXF_SINGULARITY_CACHEDIR` for the
+Singularity-based launchers; `PHYLING_IMAGE` for the container launcher). Edit
+the `#SBATCH` header or the `module load nextflow/...` line to match your
+site.
 
 ### Singularity image cache
 
@@ -252,6 +269,7 @@ singularity pull docker://quay.io/biocontainers/fasttree:2.2.0--h7b50bb2_1
 | `--outdir` | `results` | Directory for published outputs |
 | `--publish_mode` | `copy` | publishDir mode: `copy`, `link`, or `symlink` |
 | `--phyling_db` | `<workDir>/phyling` | Marker DB cache (`$PHYLING_DB`); defaults to a run-local cache under the work folder. Set to a shared path to reuse across runs |
+| `--phyling_image` | `ghcr.io/stajichlab/phyling:2.4.1` | Container image used by `-profile phyling_container[_slurm]` for phyling/phykit/IQ-TREE/RAxML-NG/FastTreeMP |
 | `--top_n_to_keep` | `80` | Number of top markers to retain (`TOP_N_TOVERR` in phyling filter `-n`) |
 | `--rcluster` | `10` | IQ-TREE partition merging aggressiveness |
 | `--bs_count` | `1000` | IQ-TREE UFBoot replicates (`-B`) |
@@ -377,11 +395,13 @@ nf_phyling/
 ├── main.nf                       entry point
 ├── nextflow.config               params + profiles
 ├── pixi.toml                     conda/PyPI environment
-├── run_phyling_singularity.sh    sbatch launcher (Singularity + SLURM)
+├── run_phyling_singularity.sh    sbatch launcher (Singularity + SLURM, one image per tool)
+├── run_phyling_container.sh      sbatch launcher (Singularity + SLURM, stajichlab/phyling image)
 ├── run_phyling_pixi.sh           sbatch launcher (pixi + SLURM)
 ├── conf/
 │   ├── base.config               per-process resource labels
 │   ├── singularity.config        per-process BioContainers images
+│   ├── phyling_container.config  stajichlab/phyling all-in-one image (+ ModelTest-NG BioContainer)
 │   ├── modules.config            per-process `module load` lines (site example)
 │   └── ucr_hpcc.config           UCR HPCC queue assignments (site example)
 ├── workflows/
