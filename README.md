@@ -94,7 +94,9 @@ profile (pixi, Singularity, or environment modules).
 ### Option A — Singularity / Apptainer (most portable)
 
 Nothing to install beyond Singularity (or Apptainer) and Nextflow — each step
-pulls its BioContainers image automatically. Set a shared cache so images aren't
+pulls its image automatically. The `PHYLING_*` steps use the
+`ghcr.io/stajichlab/phyling` image (`--phyling_image`); the other tools use
+per-tool BioContainers images. Set a shared cache so images aren't
 re-pulled per user:
 
 ```bash
@@ -151,8 +153,8 @@ convenience combinations that bundle the SLURM executor with a software layer.
 |---|---|---|---|
 | `slurm` | SLURM | — (pair with a software profile) | HPC; the executor only |
 | `local` | local | — (tools in PATH) | quick testing |
-| `singularity` | local | BioContainers images (one per tool) | local workstation with Singularity |
-| `singularity_slurm` | SLURM | BioContainers images (one per tool) | HPC, portable (recommended) |
+| `singularity` | local | `ghcr.io/stajichlab/phyling` for `PHYLING_*`; BioContainers for the other tools | local workstation with Singularity |
+| `singularity_slurm` | SLURM | `ghcr.io/stajichlab/phyling` for `PHYLING_*`; BioContainers for the other tools | HPC, portable (recommended) |
 | `phyling_container` | local | `ghcr.io/stajichlab/phyling` (all-in-one, except ModelTest-NG) | local workstation with Singularity |
 | `phyling_container_slurm` | SLURM | `ghcr.io/stajichlab/phyling` (all-in-one, except ModelTest-NG) | HPC, single maintained image |
 | `pixi` | local | pixi conda env | local workstation with pixi |
@@ -269,7 +271,7 @@ singularity pull docker://quay.io/biocontainers/fasttree:2.2.0--h7b50bb2_1
 | `--outdir` | `results` | Directory for published outputs |
 | `--publish_mode` | `copy` | publishDir mode: `copy`, `link`, or `symlink` |
 | `--phyling_db` | `<workDir>/phyling` | Marker DB cache (`$PHYLING_DB`); defaults to a run-local cache under the work folder. Set to a shared path to reuse across runs |
-| `--phyling_image` | `ghcr.io/stajichlab/phyling:2.4.1` | Container image used by `-profile phyling_container[_slurm]` for phyling/phykit/IQ-TREE/RAxML-NG/FastTreeMP |
+| `--phyling_image` | `ghcr.io/stajichlab/phyling:2.4.1` | Container image for the `PHYLING_*` steps (all profiles using Singularity); with `-profile phyling_container[_slurm]` also used for phykit/IQ-TREE/RAxML-NG/FastTreeMP |
 | `--top_n_to_keep` | `80` | Number of top markers to retain (`TOP_N_TOVERR` in phyling filter `-n`) |
 | `--rcluster` | `10` | IQ-TREE partition merging aggressiveness |
 | `--bs_count` | `1000` | IQ-TREE UFBoot replicates (`-B`) |
@@ -400,7 +402,7 @@ nf_phyling/
 ├── run_phyling_pixi.sh           sbatch launcher (pixi + SLURM)
 ├── conf/
 │   ├── base.config               per-process resource labels
-│   ├── singularity.config        per-process BioContainers images
+│   ├── singularity.config        phyling image for PHYLING_*, BioContainers for other tools
 │   ├── phyling_container.config  stajichlab/phyling all-in-one image (+ ModelTest-NG BioContainer)
 │   ├── modules.config            per-process `module load` lines (site example)
 │   └── ucr_hpcc.config           UCR HPCC queue assignments (site example)
