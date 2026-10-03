@@ -271,7 +271,7 @@ singularity pull docker://quay.io/biocontainers/fasttree:2.2.0--h7b50bb2_1
 | `--outdir` | `results` | Directory for published outputs |
 | `--publish_mode` | `copy` | publishDir mode: `copy`, `link`, or `symlink` |
 | `--phyling_db` | `<workDir>/phyling` | Marker DB cache (`$PHYLING_DB`); defaults to a run-local cache under the work folder. Set to a shared path to reuse across runs |
-| `--phyling_image` | `ghcr.io/stajichlab/phyling:2.4.1` | Container image for the `PHYLING_*` steps (all profiles using Singularity); with `-profile phyling_container[_slurm]` also used for phykit/IQ-TREE/RAxML-NG/FastTreeMP |
+| `--phyling_image` | `ghcr.io/stajichlab/phyling:v2.4.1.2` | Container image for the `PHYLING_*` steps (all profiles using Singularity); with `-profile phyling_container[_slurm]` also used for phykit/IQ-TREE/RAxML-NG/FastTreeMP |
 | `--top_n_to_keep` | `80` | Number of top markers to retain (`TOP_N_TOVERR` in phyling filter `-n`) |
 | `--rcluster` | `10` | IQ-TREE partition merging aggressiveness |
 | `--bs_count` | `1000` | IQ-TREE UFBoot replicates (`-B`) |
