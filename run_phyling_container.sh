@@ -38,7 +38,7 @@ PHYLING_IMAGE=${PHYLING_IMAGE:-}                               # override the im
 
 # ── Shared image cache so containers aren't re-pulled per user ────────
 # If compute nodes lack outbound network, pre-pull on a login node first, e.g.
-#   singularity pull docker://ghcr.io/stajichlab/phyling:2.4.1
+#   singularity pull docker://ghcr.io/stajichlab/phyling:v2.4.1.2
 export NXF_SINGULARITY_CACHEDIR=${NXF_SINGULARITY_CACHEDIR:-/bigdata/stajichlab/shared/singularity_cache}
 
 mkdir -p logs "${NXF_SINGULARITY_CACHEDIR}"
